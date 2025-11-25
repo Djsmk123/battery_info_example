@@ -14,7 +14,7 @@ This example provides a **side-by-side comparison** of both approaches for acces
 - Code maintainability
 
 ## 📱 Demo
-<video width="320" height="240" src="./assets/demo.mov" controls></video>
+<video width="320" height="240" src="https://github.com/Djsmk123/battery_info_example/raw/refs/heads/main/assets/demo.mov" controls></video>
 
 ## 🏗️ Architecture
 
