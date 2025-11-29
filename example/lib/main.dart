@@ -1,9 +1,11 @@
 
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:battery_info_example/battery_info_example.dart';
 import 'package:battery_info_example/battery_info_jni_wrapper.dart';
+import 'package:battery_info_example/battery_info_ffi_wrapper.dart';
 import 'package:flutter/services.dart';
 
 void main() {
@@ -22,22 +24,34 @@ class _MyAppState extends State<MyApp> {
   int _batteryLevelPlatform = -1;
   String _batteryTimePlatform = '';
 
-  // JNI approach
-  int _batteryLevelJni = -1;
-  String _batteryTimeJni = '';
-  bool _isChargingJni = false;
-  int _temperatureJni = -1;
+  // Native approach (JNI for Android, FFI for iOS)
+  int _batteryLevelNative = -1;
+  String _batteryTimeNative = '';
+  bool _isChargingNative = false;
+  int _temperatureNative = -1;
 
   final _batteryInfoPlugin = BatteryInfoExample();
-  final _batteryInfoJni = BatteryInfoJniWrapper();
+  BatteryInfoJniWrapper? _batteryInfoJni;
+  BatteryInfoFfiWrapper? _batteryInfoFfi;
 
   String _flutterVersion = "";
+  String _nativeApproach = "";
 
   @override
   void initState() {
     super.initState();
+
+    // Initialize platform-specific native wrapper
+    if (Platform.isAndroid) {
+      _batteryInfoJni = BatteryInfoJniWrapper();
+      _nativeApproach = "JNI (Direct FFI)";
+    } else if (Platform.isIOS) {
+      _batteryInfoFfi = BatteryInfoFfiWrapper();
+      _nativeApproach = "FFI (C Functions)";
+    }
+
     _getBatteryLevelPlatform();
-    _getBatteryLevelJni();
+    _getBatteryLevelNative();
     _fetchFlutterVersion();
   }
 
@@ -54,7 +68,7 @@ class _MyAppState extends State<MyApp> {
 
   @override
   void dispose() {
-    _batteryInfoJni.dispose();
+    _batteryInfoJni?.dispose();
     super.dispose();
   }
 
@@ -76,24 +90,35 @@ class _MyAppState extends State<MyApp> {
     }
   }
 
-  Future<void> _getBatteryLevelJni() async {
+  Future<void> _getBatteryLevelNative() async {
     final Stopwatch stopwatch = Stopwatch()..start();
     try {
-      final batteryLevel = _batteryInfoJni.getBatteryLevel();
-      final isCharging = _batteryInfoJni.isCharging();
-      final temperature = _batteryInfoJni.getTemperature();
+      int batteryLevel = -1;
+      bool isCharging = false;
+      int temperature = -1;
+
+      if (Platform.isAndroid && _batteryInfoJni != null) {
+        batteryLevel = _batteryInfoJni!.getBatteryLevel();
+        isCharging = _batteryInfoJni!.isCharging();
+        temperature = _batteryInfoJni!.getTemperature();
+      } else if (Platform.isIOS && _batteryInfoFfi != null) {
+        batteryLevel = _batteryInfoFfi!.getBatteryLevel();
+        isCharging = _batteryInfoFfi!.isCharging();
+        temperature = -1; // Temperature not available via iOS FFI
+      }
+
       final elapsed = stopwatch.elapsedMicroseconds;
       stopwatch.stop();
       setState(() {
-        _batteryLevelJni = batteryLevel;
-        _isChargingJni = isCharging;
-        _temperatureJni = temperature;
-        _batteryTimeJni = '$elapsed μs';
+        _batteryLevelNative = batteryLevel;
+        _isChargingNative = isCharging;
+        _temperatureNative = temperature;
+        _batteryTimeNative = '$elapsed μs';
       });
     } catch (e) {
       setState(() {
-        _batteryLevelJni = -1;
-        _batteryTimeJni = 'Error: $e';
+        _batteryLevelNative = -1;
+        _batteryTimeNative = 'Error: $e';
       });
     }
   }
@@ -101,7 +126,7 @@ class _MyAppState extends State<MyApp> {
   Future<void> _refreshBatteryInfo() async {
     await Future.wait([
       _getBatteryLevelPlatform(),
-      _getBatteryLevelJni(),
+      _getBatteryLevelNative(),
     ]);
   }
 
@@ -166,17 +191,17 @@ class _MyAppState extends State<MyApp> {
               ),
               const SizedBox(height: 24),
 
-              // JNI Section
-              _buildSectionHeader(context, 'JNI (Direct FFI)'),
+              // Native Section (JNI for Android, FFI for iOS)
+              _buildSectionHeader(context, _nativeApproach),
               const SizedBox(height: 12),
               _buildResultCard(
                 context,
-                _batteryLevelJni >= 0 ? '$_batteryLevelJni%' : 'N/A',
-                _batteryTimeJni,
+                _batteryLevelNative >= 0 ? '$_batteryLevelNative%' : 'N/A',
+                _batteryTimeNative,
                 Colors.green,
               ),
               const SizedBox(height: 8),
-              _buildJniDetailsCard(context),
+              _buildNativeDetailsCard(context),
               const SizedBox(height: 24),
 
               // Performance Comparison
@@ -238,7 +263,7 @@ class _MyAppState extends State<MyApp> {
     );
   }
 
-  Widget _buildJniDetailsCard(BuildContext context) {
+  Widget _buildNativeDetailsCard(BuildContext context) {
     return Card(
       elevation: 1,
       color: Colors.green.shade50,
@@ -250,31 +275,32 @@ class _MyAppState extends State<MyApp> {
             Column(
               children: [
                 Icon(
-                  _isChargingJni ? Icons.battery_charging_full : Icons.battery_std,
-                  color: _isChargingJni ? Colors.green : Colors.grey,
+                  _isChargingNative ? Icons.battery_charging_full : Icons.battery_std,
+                  color: _isChargingNative ? Colors.green : Colors.grey,
                   size: 32,
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  _isChargingJni ? 'Charging' : 'Not Charging',
+                  _isChargingNative ? 'Charging' : 'Not Charging',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
             ),
-            Column(
-              children: [
-                Icon(
-                  Icons.thermostat,
-                  color: Colors.orange,
-                  size: 32,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  _temperatureJni >= 0 ? '$_temperatureJni°C' : 'N/A',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ],
-            ),
+            if (Platform.isAndroid)
+              Column(
+                children: [
+                  Icon(
+                    Icons.thermostat,
+                    color: Colors.orange,
+                    size: 32,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _temperatureNative >= 0 ? '$_temperatureNative°C' : 'N/A',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
           ],
         ),
       ),
@@ -283,11 +309,12 @@ class _MyAppState extends State<MyApp> {
 
   Widget _buildPerformanceComparison(BuildContext context) {
     final platformTime = int.tryParse(_batteryTimePlatform.replaceAll(RegExp(r'[^\d]'), '')) ?? 0;
-    final jniTime = int.tryParse(_batteryTimeJni.replaceAll(RegExp(r'[^\d]'), '')) ?? 0;
+    final nativeTime = int.tryParse(_batteryTimeNative.replaceAll(RegExp(r'[^\d]'), '')) ?? 0;
 
     String speedup = '';
-    if (platformTime > 0 && jniTime > 0) {
-      final ratio = (platformTime / jniTime).toStringAsFixed(1);
+    String nativeLabel = Platform.isAndroid ? 'JNI' : 'FFI';
+    if (platformTime > 0 && nativeTime > 0) {
+      final ratio = (platformTime / nativeTime).toStringAsFixed(1);
       speedup = '${ratio}x faster';
     }
 
@@ -325,7 +352,7 @@ class _MyAppState extends State<MyApp> {
                     Icon(Icons.insights, color: Colors.orange.shade900),
                     const SizedBox(width: 8),
                     Text(
-                      'JNI is $speedup',
+                      '$nativeLabel is $speedup',
                       style: TextStyle(
                         color: Colors.orange.shade900,
                         fontWeight: FontWeight.bold,
@@ -359,11 +386,11 @@ class _MyAppState extends State<MyApp> {
                 Column(
                   children: [
                     Text(
-                      'JNI',
+                      nativeLabel,
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                     Text(
-                      _batteryTimeJni,
+                      _batteryTimeNative,
                       style: TextStyle(
                         color: Colors.orange.shade900,
                         fontFamily: 'monospace',

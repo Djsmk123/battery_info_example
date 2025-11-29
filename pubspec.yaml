@@ -40,6 +40,8 @@ flutter:
       android:
         package: com.example.battery_info_example
         pluginClass: BatteryInfoExamplePlugin
+      ios:
+        pluginClass: BatteryInfoExamplePlugin
 
   # To add assets to your plugin package, add an assets section, like this:
   # assets:
